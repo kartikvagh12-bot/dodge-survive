@@ -11,8 +11,19 @@
   <canvas id="game"></canvas>
 
   <div id="hud">
-    <div id="score">0</div>
-    <div id="best">Best: 0</div>
+    <div class="hud-left">
+      <div id="score">0</div>
+      <div id="best">Best: 0</div>
+    </div>
+    <div class="hud-right">
+      <div id="level-pill">LV <span id="level-num">1</span></div>
+      <div id="powerups"></div>
+    </div>
+  </div>
+
+  <div id="level-toast" class="hidden">
+    <div class="lt-sub">LEVEL UP</div>
+    <div class="lt-num">2</div>
   </div>
 
   <div id="joystick">
@@ -24,6 +35,7 @@
       <h1>GAME OVER</h1>
       <div class="go-score">Score <span id="final-score">0</span></div>
       <div class="go-best">Best <span id="final-best">0</span></div>
+      <div id="unlock-banner" class="hidden">NEW SKIN UNLOCKED: <span id="unlock-name">—</span></div>
       <div class="go-hint" id="restart-hint">Tap to restart</div>
     </div>
   </div>
@@ -31,6 +43,10 @@
   <div id="start" class="overlay">
     <div class="go-card">
       <h1>DODGE &amp; SURVIVE</h1>
+      <div class="skin-section">
+        <div class="skin-label">CHOOSE SKIN</div>
+        <div id="skin-picker"></div>
+      </div>
       <div class="go-hint" id="start-hint">Tap to start</div>
     </div>
   </div>

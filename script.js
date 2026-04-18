@@ -1,14 +1,21 @@
 (() => {
+  // ── DOM ──────────────────────────────────────────────────────────────────
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
+  const levelNumEl = document.getElementById('level-num');
+  const powerupsEl = document.getElementById('powerups');
+  const levelToastEl = document.getElementById('level-toast');
   const finalScoreEl = document.getElementById('final-score');
   const finalBestEl = document.getElementById('final-best');
+  const unlockBannerEl = document.getElementById('unlock-banner');
+  const unlockNameEl = document.getElementById('unlock-name');
   const restartHintEl = document.getElementById('restart-hint');
   const startHintEl = document.getElementById('start-hint');
   const gameoverEl = document.getElementById('gameover');
   const startEl = document.getElementById('start');
+  const skinPickerEl = document.getElementById('skin-picker');
   const joystickEl = document.getElementById('joystick');
   const knobEl = document.getElementById('joystick-knob');
 
@@ -16,7 +23,59 @@
   startHintEl.textContent = isTouch ? 'Tap to start' : 'Press any key to start';
   restartHintEl.textContent = isTouch ? 'Tap to restart' : 'Press any key to restart';
 
-  // ── Canvas sizing (DPR-aware) ─────────────────────────────────────────────
+  // ── Skins ────────────────────────────────────────────────────────────────
+  const SKINS = [
+    { id: 'cyan',    name: 'Cyan',    color: '#5ee2ff', unlockAt: 0   },
+    { id: 'magenta', name: 'Magenta', color: '#ff5ee2', unlockAt: 20  },
+    { id: 'gold',    name: 'Gold',    color: '#ffcd5e', unlockAt: 40  },
+    { id: 'lime',    name: 'Lime',    color: '#5eff7a', unlockAt: 70  },
+    { id: 'crimson', name: 'Crimson', color: '#ff5e5e', unlockAt: 110 },
+    { id: 'rainbow', name: 'Rainbow', color: 'rainbow', unlockAt: 160 },
+  ];
+  let currentSkinId = localStorage.getItem('dodgeSurviveSkin') || 'cyan';
+
+  function isUnlocked(skin) { return best >= skin.unlockAt; }
+  function getSkin(id) { return SKINS.find(s => s.id === id) || SKINS[0]; }
+  function skinColor(t = 0) {
+    const s = getSkin(currentSkinId);
+    if (s.color === 'rainbow') return `hsl(${(t * 80) % 360}, 90%, 65%)`;
+    return s.color;
+  }
+  function skinColorRGBA(alpha, t = 0) {
+    const c = skinColor(t);
+    if (c.startsWith('hsl')) return c.replace('hsl', 'hsla').replace(')', `, ${alpha})`);
+    // hex → rgba
+    const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // ── Power-ups ────────────────────────────────────────────────────────────
+  const PWR = {
+    SHIELD: {
+      id: 'SHIELD',
+      label: 'SHIELD',
+      color: '#5ee2ff',
+      duration: 4.5,
+    },
+    SLOW: {
+      id: 'SLOW',
+      label: 'SLOW-MO',
+      color: '#b48bff',
+      duration: 5.0,
+      slowFactor: 0.35,
+    },
+    SPEED: {
+      id: 'SPEED',
+      label: 'SPEED',
+      color: '#ffcd5e',
+      duration: 5.0,
+      speedMult: 1.7,
+    },
+  };
+  const PWR_LIST = Object.values(PWR);
+  const PWR_RADIUS = 16;
+
+  // ── Canvas sizing ───────────────────────────────────────────────────────
   let W = 0, H = 0, dpr = 1;
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -36,70 +95,139 @@
   const STATE = { START: 0, PLAYING: 1, GAMEOVER: 2 };
   let state = STATE.START;
 
-  let player, enemies, particles, elapsed, spawnTimer, score, best, shake, flash;
+  let player, enemies, particles, trail, powerups, activeFx,
+      elapsed, spawnTimer, pwrSpawnTimer, score, best,
+      shake, flash, level, lastLevelShown;
 
   best = +(localStorage.getItem('dodgeSurviveBest') || 0);
   bestEl.textContent = 'Best: ' + best;
 
   function reset() {
-    player = { x: W / 2, y: H / 2, r: 12, vx: 0, vy: 0, speed: 290 };
+    player = { x: W / 2, y: H / 2, r: 12, vx: 0, vy: 0, baseSpeed: 290 };
     enemies = [];
     particles = [];
+    trail = [];
+    powerups = [];
+    activeFx = { SHIELD: 0, SLOW: 0, SPEED: 0 };
     elapsed = 0;
-    spawnTimer = 0.4;
+    spawnTimer = 0.5;
+    pwrSpawnTimer = 7 + Math.random() * 4;
     score = 0;
     shake = 0;
     flash = 0;
+    level = 1;
+    lastLevelShown = 1;
     scoreEl.textContent = '0';
+    levelNumEl.textContent = '1';
+    powerupsEl.innerHTML = '';
   }
 
+  // ── Skin picker UI ──────────────────────────────────────────────────────
+  function buildSkinPicker() {
+    skinPickerEl.innerHTML = '';
+    for (const s of SKINS) {
+      const el = document.createElement('div');
+      el.className = 'skin-swatch';
+      const unlocked = isUnlocked(s);
+      if (!unlocked) el.classList.add('locked');
+      if (s.id === currentSkinId && unlocked) el.classList.add('selected');
+
+      if (s.color === 'rainbow') {
+        el.style.background = 'conic-gradient(from 0deg, #ff5e5e, #ffcd5e, #5eff7a, #5ee2ff, #b48bff, #ff5ee2, #ff5e5e)';
+      } else {
+        el.style.background = s.color;
+        el.style.boxShadow = unlocked ? `0 0 16px ${s.color}55` : 'none';
+      }
+      if (!unlocked) {
+        const lab = document.createElement('div');
+        lab.className = 'lock-label';
+        lab.textContent = s.unlockAt + 's';
+        el.appendChild(lab);
+      }
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!isUnlocked(s)) return;
+        currentSkinId = s.id;
+        localStorage.setItem('dodgeSurviveSkin', s.id);
+        buildSkinPicker();
+      });
+      el.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        if (!isUnlocked(s)) return;
+        currentSkinId = s.id;
+        localStorage.setItem('dodgeSurviveSkin', s.id);
+        buildSkinPicker();
+      }, { passive: true });
+      skinPickerEl.appendChild(el);
+    }
+  }
+  buildSkinPicker();
+
+  // ── Game flow ───────────────────────────────────────────────────────────
   function startGame() {
     reset();
     state = STATE.PLAYING;
     startEl.classList.add('hidden');
     gameoverEl.classList.add('hidden');
+    unlockBannerEl.classList.add('hidden');
   }
 
   function endGame() {
     state = STATE.GAMEOVER;
-    shake = 18;
-    flash = 0.5;
-    // Player death burst
-    for (let i = 0; i < 36; i++) {
+    shake = 22;
+    flash = 0.55;
+    // Death burst — colored to match active skin
+    for (let i = 0; i < 50; i++) {
       const a = Math.random() * Math.PI * 2;
-      const sp = 150 + Math.random() * 220;
+      const sp = 180 + Math.random() * 260;
       particles.push({
         x: player.x, y: player.y,
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        life: 1.0, max: 1.0,
-        r: 2 + Math.random() * 3,
-        color: Math.random() < 0.5 ? '#5ee2ff' : '#ffffff',
+        life: 1.1, max: 1.1,
+        r: 2 + Math.random() * 3.5,
+        color: Math.random() < 0.5 ? skinColor(elapsed) : '#ffffff',
       });
     }
+
+    let unlockedNew = null;
     if (score > best) {
+      const prevBest = best;
       best = score;
       localStorage.setItem('dodgeSurviveBest', best);
       bestEl.textContent = 'Best: ' + best;
+      // Detect any newly unlocked skin
+      for (const s of SKINS) {
+        if (s.unlockAt > prevBest && s.unlockAt <= best) {
+          unlockedNew = s;
+        }
+      }
+      buildSkinPicker(); // refresh lock states
     }
+
     finalScoreEl.textContent = score;
     finalBestEl.textContent = best;
-    setTimeout(() => gameoverEl.classList.remove('hidden'), 500);
+
+    if (unlockedNew) {
+      unlockNameEl.textContent = unlockedNew.name.toUpperCase();
+      unlockBannerEl.classList.remove('hidden');
+    } else {
+      unlockBannerEl.classList.add('hidden');
+    }
+
+    setTimeout(() => gameoverEl.classList.remove('hidden'), 550);
   }
 
-  // ── Input: keyboard ──────────────────────────────────────────────────────
+  // ── Input: keyboard ─────────────────────────────────────────────────────
   const keys = Object.create(null);
   window.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
     if (state === STATE.START) { startGame(); return; }
-    if (state === STATE.GAMEOVER) {
-      // tiny debounce so death key doesn't auto-restart
-      if (elapsed > 0.6) startGame();
-    }
+    if (state === STATE.GAMEOVER && elapsed > 0.6) startGame();
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // ── Input: joystick (mobile) ─────────────────────────────────────────────
-  const joy = { active: false, id: null, dx: 0, dy: 0 };
+  // ── Input: joystick ─────────────────────────────────────────────────────
+  const joy = { active: false, id: null, dx: 0, dy: 0, cx: 0, cy: 0 };
   const JOY_MAX = 50;
 
   function joyStart(e) {
@@ -107,8 +235,9 @@
     const t = e.changedTouches ? e.changedTouches[0] : e;
     joy.active = true;
     joy.id = e.changedTouches ? t.identifier : 'mouse';
-    joy.cx = (joystickEl.getBoundingClientRect().left + joystickEl.getBoundingClientRect().right) / 2;
-    joy.cy = (joystickEl.getBoundingClientRect().top + joystickEl.getBoundingClientRect().bottom) / 2;
+    const r = joystickEl.getBoundingClientRect();
+    joy.cx = (r.left + r.right) / 2;
+    joy.cy = (r.top + r.bottom) / 2;
     joyMove(e);
   }
   function joyMove(e) {
@@ -140,15 +269,16 @@
   }
 
   joystickEl.addEventListener('touchstart', (e) => { e.preventDefault(); joyStart(e); }, { passive: false });
-  joystickEl.addEventListener('touchmove', (e) => { e.preventDefault(); joyMove(e); }, { passive: false });
-  joystickEl.addEventListener('touchend', (e) => { e.preventDefault(); joyEnd(e); }, { passive: false });
-  joystickEl.addEventListener('touchcancel', (e) => { e.preventDefault(); joyEnd(e); }, { passive: false });
+  joystickEl.addEventListener('touchmove',  (e) => { e.preventDefault(); joyMove(e);  }, { passive: false });
+  joystickEl.addEventListener('touchend',   (e) => { e.preventDefault(); joyEnd(e);   }, { passive: false });
+  joystickEl.addEventListener('touchcancel',(e) => { e.preventDefault(); joyEnd(e);   }, { passive: false });
 
-  // Tap-to-start / restart for touch devices
+  // Tap/click to start or restart (skip when interacting with skin picker)
   function tapHandler(e) {
+    if (e.target && e.target.closest('.skin-swatch')) return;
     e.preventDefault();
-    if (state === STATE.START) { startGame(); }
-    else if (state === STATE.GAMEOVER && elapsed > 0.6) { startGame(); }
+    if (state === STATE.START) startGame();
+    else if (state === STATE.GAMEOVER && elapsed > 0.6) startGame();
   }
   startEl.addEventListener('touchstart', tapHandler, { passive: false });
   startEl.addEventListener('mousedown', tapHandler);
@@ -169,12 +299,46 @@
     else if (side === 1) { x = W + margin; y = Math.random() * H; }
     else if (side === 2) { x = Math.random() * W; y = H + margin; }
     else { x = -margin; y = Math.random() * H; }
-    // Speed scales with elapsed time
-    const minSp = 80 + Math.min(elapsed * 1.6, 90);
-    const maxSp = 130 + Math.min(elapsed * 2.4, 140);
+    // Speed scales with level (more dramatic per level)
+    const lvBoost = (level - 1) * 14;
+    const minSp = 80 + lvBoost;
+    const maxSp = 140 + lvBoost * 1.4;
     const speed = minSp + Math.random() * (maxSp - minSp);
     const r = 11 + Math.random() * 7;
-    enemies.push({ x, y, r, speed, hue: 350 + (Math.random() - 0.5) * 30 });
+    enemies.push({
+      x, y, r, speed,
+      hue: 350 + (Math.random() - 0.5) * 30,
+      pulsePhase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function spawnPowerup() {
+    const type = PWR_LIST[Math.floor(Math.random() * PWR_LIST.length)];
+    const margin = 60;
+    const x = margin + Math.random() * (W - margin * 2);
+    const y = margin + Math.random() * (H - margin * 2);
+    powerups.push({
+      type, x, y, r: PWR_RADIUS,
+      life: 9.0, max: 9.0,
+      bob: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function activatePowerup(type) {
+    activeFx[type.id] = type.duration;
+    // Burst on pickup
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 100 + Math.random() * 180;
+      particles.push({
+        x: player.x, y: player.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.7, max: 0.7,
+        r: 2 + Math.random() * 2.5,
+        color: type.color,
+      });
+    }
+    flash = Math.max(flash, 0.18);
   }
 
   // ── Update ──────────────────────────────────────────────────────────────
@@ -183,18 +347,31 @@
     score = Math.floor(elapsed);
     scoreEl.textContent = score;
 
-    // Player movement: combine keys + joystick
+    // Level: bump every 10 seconds
+    const newLevel = 1 + Math.floor(elapsed / 10);
+    if (newLevel !== level) {
+      level = newLevel;
+      levelNumEl.textContent = level;
+    }
+    if (level !== lastLevelShown) {
+      lastLevelShown = level;
+      showLevelToast(level);
+    }
+
+    // Player movement
     let mx = 0, my = 0;
-    if (keys['w'] || keys['arrowup']) my -= 1;
-    if (keys['s'] || keys['arrowdown']) my += 1;
-    if (keys['a'] || keys['arrowleft']) mx -= 1;
+    if (keys['w'] || keys['arrowup'])    my -= 1;
+    if (keys['s'] || keys['arrowdown'])  my += 1;
+    if (keys['a'] || keys['arrowleft'])  mx -= 1;
     if (keys['d'] || keys['arrowright']) mx += 1;
     if (joy.active) { mx += joy.dx; my += joy.dy; }
     const m = Math.hypot(mx, my);
     if (m > 1) { mx /= m; my /= m; }
 
-    player.vx = mx * player.speed;
-    player.vy = my * player.speed;
+    const speedMult = activeFx.SPEED > 0 ? PWR.SPEED.speedMult : 1;
+    const playerSpeed = player.baseSpeed * speedMult;
+    player.vx = mx * playerSpeed;
+    player.vy = my * playerSpeed;
     player.x += player.vx * dt;
     player.y += player.vy * dt;
     if (player.x < player.r) player.x = player.r;
@@ -202,54 +379,164 @@
     if (player.x > W - player.r) player.x = W - player.r;
     if (player.y > H - player.r) player.y = H - player.r;
 
-    // Spawning — interval shrinks with time
+    // Player trail
+    const moving = (mx * mx + my * my) > 0.05;
+    if (moving) {
+      trail.push({
+        x: player.x, y: player.y,
+        life: 0.55, max: 0.55,
+        r: player.r * (0.9 + Math.random() * 0.2),
+        color: skinColor(elapsed),
+      });
+    }
+    for (const t of trail) t.life -= dt;
+    for (let i = trail.length - 1; i >= 0; i--) if (trail[i].life <= 0) trail.splice(i, 1);
+    // Cap trail length for perf
+    if (trail.length > 80) trail.splice(0, trail.length - 80);
+
+    // Enemy spawning — interval shrinks with level
     spawnTimer -= dt;
-    const interval = Math.max(0.22, 1.1 - elapsed * 0.012);
+    const baseInterval = Math.max(0.18, 1.0 - (level - 1) * 0.07 - elapsed * 0.005);
     if (spawnTimer <= 0) {
       spawnEnemy();
-      spawnTimer = interval;
+      spawnTimer = baseInterval * (0.7 + Math.random() * 0.6);
     }
 
-    // Move enemies toward player
+    // Powerup spawning — every 7-13s, but skip if all 3 already active
+    pwrSpawnTimer -= dt;
+    if (pwrSpawnTimer <= 0) {
+      spawnPowerup();
+      pwrSpawnTimer = 7 + Math.random() * 6;
+    }
+
+    // Slow-mo affects enemies + their particles, not player
+    const enemyDt = activeFx.SLOW > 0 ? dt * PWR.SLOW.slowFactor : dt;
+
+    // Move enemies
+    const shielded = activeFx.SHIELD > 0;
     for (const e of enemies) {
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
-      e.x += (dx / d) * e.speed * dt;
-      e.y += (dy / d) * e.speed * dt;
+      e.x += (dx / d) * e.speed * enemyDt;
+      e.y += (dy / d) * e.speed * enemyDt;
+      e.pulsePhase += dt * 6;
       // Collision
       if (d < e.r + player.r - 2) {
+        if (shielded) {
+          // Vaporize the enemy & burst
+          enemyDeathBurst(e);
+          e._dead = true;
+          continue;
+        }
         endGame();
         return;
       }
     }
+    for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i]._dead) enemies.splice(i, 1);
 
-    // Particles
+    // Powerup pickup
+    for (const p of powerups) {
+      p.bob += dt * 3;
+      p.life -= dt;
+      const dx = player.x - p.x, dy = player.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < p.r + player.r) {
+        activatePowerup(p.type);
+        p._taken = true;
+      }
+    }
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      const p = powerups[i];
+      if (p._taken || p.life <= 0) powerups.splice(i, 1);
+    }
+
+    // Particles (use enemyDt so slow-mo also slows visual debris from enemies)
     for (const p of particles) {
-      p.vx *= 0.94;
-      p.vy *= 0.94;
+      p.vx *= 0.93;
+      p.vy *= 0.93;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.life -= dt;
     }
     for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
+
+    // Decay active power-ups
+    for (const k of Object.keys(activeFx)) {
+      if (activeFx[k] > 0) activeFx[k] = Math.max(0, activeFx[k] - dt);
+    }
+    renderPowerupHud();
 
     if (shake > 0) shake = Math.max(0, shake - dt * 30);
     if (flash > 0) flash = Math.max(0, flash - dt * 1.4);
   }
 
+  function enemyDeathBurst(e) {
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 80 + Math.random() * 200;
+      particles.push({
+        x: e.x, y: e.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.6, max: 0.6,
+        r: 2 + Math.random() * 2,
+        color: `hsl(${e.hue}, 90%, 60%)`,
+      });
+    }
+  }
+
   function updateGameover(dt) {
     elapsed += dt;
     for (const p of particles) {
-      p.vx *= 0.94;
-      p.vy *= 0.94;
+      p.vx *= 0.93;
+      p.vy *= 0.93;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.life -= dt;
     }
     for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
+    for (const t of trail) t.life -= dt;
+    for (let i = trail.length - 1; i >= 0; i--) if (trail[i].life <= 0) trail.splice(i, 1);
     if (shake > 0) shake = Math.max(0, shake - dt * 30);
     if (flash > 0) flash = Math.max(0, flash - dt * 1.4);
+  }
+
+  // ── HUD: power-up chips ─────────────────────────────────────────────────
+  function renderPowerupHud() {
+    const items = [];
+    for (const t of PWR_LIST) {
+      const remain = activeFx[t.id];
+      if (remain > 0) items.push({ t, remain });
+    }
+    // Diff-update DOM efficiently
+    const existingIds = Array.from(powerupsEl.children).map(c => c.dataset.id);
+    const wantedIds = items.map(i => i.t.id);
+    if (existingIds.join(',') !== wantedIds.join(',')) {
+      powerupsEl.innerHTML = '';
+      for (const i of items) {
+        const chip = document.createElement('div');
+        chip.className = 'pwr-chip';
+        chip.dataset.id = i.t.id;
+        chip.style.color = i.t.color;
+        chip.innerHTML = `<span class="dot"></span><span class="lbl">${i.t.label}</span> <span class="t">0.0s</span>`;
+        powerupsEl.appendChild(chip);
+      }
+    }
+    // Update timers in place
+    let idx = 0;
+    for (const i of items) {
+      const chip = powerupsEl.children[idx++];
+      if (chip) chip.querySelector('.t').textContent = i.remain.toFixed(1) + 's';
+    }
+  }
+
+  function showLevelToast(n) {
+    levelToastEl.classList.remove('hidden');
+    levelToastEl.querySelector('.lt-num').textContent = n;
+    // Restart CSS animation
+    levelToastEl.style.animation = 'none';
+    void levelToastEl.offsetWidth;
+    levelToastEl.style.animation = '';
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -260,17 +547,138 @@
     ctx.strokeStyle = 'rgba(94, 226, 255, 0.05)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let x = (ox % step); x < W; x += step) {
-      ctx.moveTo(x, 0); ctx.lineTo(x, H);
-    }
-    for (let y = (oy % step); y < H; y += step) {
-      ctx.moveTo(0, y); ctx.lineTo(W, y);
-    }
+    for (let x = (ox % step); x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let y = (oy % step); y < H; y += step) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
     ctx.stroke();
   }
 
+  function drawTrail() {
+    for (const t of trail) {
+      const a = Math.max(0, t.life / t.max);
+      ctx.globalAlpha = a * 0.45;
+      ctx.fillStyle = t.color;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r * a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPowerups() {
+    for (const p of powerups) {
+      const fade = p.life < 2 ? p.life / 2 : 1;
+      const bob = Math.sin(p.bob) * 4;
+      const y = p.y + bob;
+      ctx.globalAlpha = fade;
+
+      // Outer glow
+      const grad = ctx.createRadialGradient(p.x, y, 0, p.x, y, p.r * 2.6);
+      grad.addColorStop(0, p.type.color + 'cc');
+      grad.addColorStop(1, p.type.color + '00');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, y, p.r * 2.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Core
+      ctx.fillStyle = p.type.color;
+      ctx.beginPath();
+      ctx.arc(p.x, y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Glyph
+      ctx.fillStyle = '#0a0a14';
+      ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const glyph = p.type.id === 'SHIELD' ? 'S' : p.type.id === 'SLOW' ? 'T' : '»';
+      ctx.fillText(glyph, p.x, y + 1);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawEnemies() {
+    for (const e of enemies) {
+      const pulse = 1 + Math.sin(e.pulsePhase) * 0.08;
+      ctx.beginPath();
+      const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 2.2);
+      grad.addColorStop(0, `hsla(${e.hue}, 90%, 60%, 0.85)`);
+      grad.addColorStop(1, `hsla(${e.hue}, 90%, 30%, 0)`);
+      ctx.fillStyle = grad;
+      ctx.arc(e.x, e.y, e.r * 2.2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.fillStyle = `hsl(${e.hue}, 90%, 55%)`;
+      ctx.arc(e.x, e.y, e.r * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.arc(e.x - e.r * 0.3, e.y - e.r * 0.3, e.r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPlayer() {
+    if (state === STATE.GAMEOVER) return;
+    const t = elapsed;
+    const pulse = 1 + Math.sin(t * 6) * 0.08;
+    const col = skinColor(t);
+    const colA = (a) => skinColorRGBA(a, t);
+
+    // Glow
+    ctx.beginPath();
+    const pg = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.r * 2.6);
+    pg.addColorStop(0, colA(0.65));
+    pg.addColorStop(1, colA(0));
+    ctx.fillStyle = pg;
+    ctx.arc(player.x, player.y, player.r * 2.6 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core
+    ctx.beginPath();
+    ctx.fillStyle = col;
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Highlight
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.arc(player.x - player.r * 0.3, player.y - player.r * 0.3, player.r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shield ring
+    if (activeFx.SHIELD > 0) {
+      const ringR = player.r + 8 + Math.sin(t * 8) * 1.5;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(94, 226, 255, ${0.4 + 0.4 * Math.sin(t * 10)})`;
+      ctx.shadowColor = '#5ee2ff';
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Speed boost — extra jets
+    if (activeFx.SPEED > 0) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255, 205, 94, 0.6)';
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.r + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawSlowmoTint() {
+    if (activeFx.SLOW <= 0) return;
+    const a = Math.min(0.18, activeFx.SLOW * 0.05);
+    ctx.fillStyle = `rgba(140, 110, 220, ${a})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
   function render() {
-    // Apply shake offset
     const sx = (Math.random() - 0.5) * shake;
     const sy = (Math.random() - 0.5) * shake;
     ctx.setTransform(dpr, 0, 0, dpr, sx * dpr, sy * dpr);
@@ -280,49 +688,11 @@
     ctx.fillRect(0, 0, W, H);
 
     drawGrid();
-
-    // Enemies
-    for (const e of enemies) {
-      ctx.beginPath();
-      const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 2);
-      grad.addColorStop(0, `hsl(${e.hue}, 90%, 60%)`);
-      grad.addColorStop(1, `hsla(${e.hue}, 90%, 30%, 0)`);
-      ctx.fillStyle = grad;
-      ctx.arc(e.x, e.y, e.r * 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.fillStyle = `hsl(${e.hue}, 90%, 55%)`;
-      ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.arc(e.x - e.r * 0.3, e.y - e.r * 0.3, e.r * 0.3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Player
-    if (state !== STATE.GAMEOVER) {
-      const pulse = 1 + Math.sin(elapsed * 6) * 0.08;
-      ctx.beginPath();
-      const pg = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, player.r * 2.4);
-      pg.addColorStop(0, 'rgba(94, 226, 255, 0.7)');
-      pg.addColorStop(1, 'rgba(94, 226, 255, 0)');
-      ctx.fillStyle = pg;
-      ctx.arc(player.x, player.y, player.r * 2.4 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.fillStyle = '#5ee2ff';
-      ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.arc(player.x - player.r * 0.3, player.y - player.r * 0.3, player.r * 0.35, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    drawSlowmoTint();
+    drawTrail();
+    drawPowerups();
+    drawEnemies();
+    drawPlayer();
 
     // Particles
     for (const p of particles) {
@@ -335,7 +705,7 @@
     }
     ctx.globalAlpha = 1;
 
-    // Flash
+    // Death flash
     if (flash > 0) {
       ctx.fillStyle = `rgba(255, 64, 96, ${flash})`;
       ctx.fillRect(0, 0, W, H);
@@ -358,7 +728,6 @@
   }
 
   reset();
-  // Render once before start so the canvas isn't blank
   render();
   requestAnimationFrame(loop);
 })();
