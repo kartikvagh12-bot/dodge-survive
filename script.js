@@ -396,10 +396,9 @@
     if (player.x > W - player.r) player.x = W - player.r;
     if (player.y > H - player.r) player.y = H - player.r;
 
-    // Player trail — fixed-length FIFO of recent positions (works for both
-    // keyboard velocity and touch delta since we read player.x/y directly)
+    // Player trail — always pushed every frame, independent of input method
     trail.push({ x: player.x, y: player.y });
-    if (trail.length > 20) trail.shift();
+    if (trail.length > 25) trail.shift();
 
     // Smooth interval decay — fast at start, gentle asymptote near 0.18s
     spawnTimer -= dt;
@@ -560,19 +559,15 @@
   }
 
   function drawTrail() {
-    const n = trail.length;
-    if (n < 2) return;
-    const col = skinColor(elapsed);
-    for (let i = 0; i < n; i++) {
-      const t = trail[i];
-      const f = (i + 1) / n; // 0 → oldest, 1 → newest
-      ctx.globalAlpha = 0.5 * f;
-      ctx.fillStyle = col;
+    for (let i = 0; i < trail.length; i++) {
+      const point = trail[i];
+      const alpha = i / trail.length;
+      const radius = player.r * (alpha * 0.8);
       ctx.beginPath();
-      ctx.arc(t.x, t.y, player.r * (0.25 + 0.6 * f), 0, Math.PI * 2);
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
   }
 
   function drawPowerups() {
