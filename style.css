@@ -1,0 +1,166 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  background: #0a0a14;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #0a0a14;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  top: env(safe-area-inset-top, 0);
+  left: 0;
+  right: 0;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#score {
+  font-size: 56px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(94, 226, 255, 0.55), 0 2px 4px rgba(0,0,0,0.6);
+  line-height: 1;
+}
+
+#best {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 12px;
+}
+
+#joystick {
+  position: fixed;
+  left: calc(env(safe-area-inset-left, 0px) + 28px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.18);
+  touch-action: none;
+  z-index: 10;
+  display: none;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+#joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  margin-top: -30px;
+  margin-left: -30px;
+  border-radius: 50%;
+  background: rgba(94, 226, 255, 0.55);
+  border: 2px solid rgba(255,255,255,0.6);
+  box-shadow: 0 0 20px rgba(94, 226, 255, 0.6);
+  transition: transform 0.05s linear;
+  pointer-events: none;
+}
+
+/* Show joystick on touch devices */
+@media (pointer: coarse), (hover: none) {
+  #joystick { display: block; }
+}
+
+.overlay, #gameover {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 18, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  animation: fadein 0.25s ease-out;
+}
+
+.hidden { display: none !important; }
+
+.go-card {
+  text-align: center;
+  padding: 40px 50px;
+  max-width: 90vw;
+}
+
+.go-card h1 {
+  margin: 0 0 24px 0;
+  font-size: clamp(36px, 8vw, 64px);
+  font-weight: 900;
+  letter-spacing: 4px;
+  background: linear-gradient(135deg, #5ee2ff, #ff4060);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 30px rgba(94, 226, 255, 0.3);
+}
+
+.go-score {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #fff;
+}
+
+.go-score span, .go-best span {
+  color: #5ee2ff;
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+
+.go-best {
+  font-size: 16px;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 28px;
+}
+
+.go-hint {
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.7);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
