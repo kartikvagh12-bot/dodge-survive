@@ -396,20 +396,10 @@
     if (player.x > W - player.r) player.x = W - player.r;
     if (player.y > H - player.r) player.y = H - player.r;
 
-    // Player trail
-    const moving = (mx * mx + my * my) > 0.05;
-    if (moving) {
-      trail.push({
-        x: player.x, y: player.y,
-        life: 0.55, max: 0.55,
-        r: player.r * (0.9 + Math.random() * 0.2),
-        color: skinColor(elapsed),
-      });
-    }
-    for (const t of trail) t.life -= dt;
-    for (let i = trail.length - 1; i >= 0; i--) if (trail[i].life <= 0) trail.splice(i, 1);
-    // Cap trail length for perf
-    if (trail.length > 80) trail.splice(0, trail.length - 80);
+    // Player trail — fixed-length FIFO of recent positions (works for both
+    // keyboard velocity and touch delta since we read player.x/y directly)
+    trail.push({ x: player.x, y: player.y });
+    if (trail.length > 20) trail.shift();
 
     // Smooth interval decay — fast at start, gentle asymptote near 0.18s
     spawnTimer -= dt;
@@ -512,8 +502,8 @@
       p.life -= dt;
     }
     for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
-    for (const t of trail) t.life -= dt;
-    for (let i = trail.length - 1; i >= 0; i--) if (trail[i].life <= 0) trail.splice(i, 1);
+    // Drain trail on gameover so it fades out naturally
+    if (trail.length > 0) trail.shift();
     if (shake > 0) shake = Math.max(0, shake - dt * 30);
     if (flash > 0) flash = Math.max(0, flash - dt * 1.4);
   }
@@ -570,12 +560,16 @@
   }
 
   function drawTrail() {
-    for (const t of trail) {
-      const a = Math.max(0, t.life / t.max);
-      ctx.globalAlpha = a * 0.45;
-      ctx.fillStyle = t.color;
+    const n = trail.length;
+    if (n < 2) return;
+    const col = skinColor(elapsed);
+    for (let i = 0; i < n; i++) {
+      const t = trail[i];
+      const f = (i + 1) / n; // 0 → oldest, 1 → newest
+      ctx.globalAlpha = 0.5 * f;
+      ctx.fillStyle = col;
       ctx.beginPath();
-      ctx.arc(t.x, t.y, t.r * a, 0, Math.PI * 2);
+      ctx.arc(t.x, t.y, player.r * (0.25 + 0.6 * f), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
