@@ -16,8 +16,6 @@
   const gameoverEl = document.getElementById('gameover');
   const startEl = document.getElementById('start');
   const skinPickerEl = document.getElementById('skin-picker');
-  const joystickEl = document.getElementById('joystick');
-  const knobEl = document.getElementById('joystick-knob');
 
   const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
   startHintEl.textContent = isTouch ? 'Tap to start' : 'Press any key to start';
@@ -228,54 +226,50 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // ── Input: joystick ─────────────────────────────────────────────────────
-  const joy = { active: false, id: null, dx: 0, dy: 0, cx: 0, cy: 0 };
-  const JOY_MAX = 50;
+  // ── Input: touch-to-move (mobile) ───────────────────────────────────────
+  // Tap or hold anywhere on the canvas — player moves toward that point.
+  const touch = { active: false, id: null, x: 0, y: 0, fade: 0 };
 
-  function joyStart(e) {
-    if (joy.active) return;
-    const t = e.changedTouches ? e.changedTouches[0] : e;
-    joy.active = true;
-    joy.id = e.changedTouches ? t.identifier : 'mouse';
-    const r = joystickEl.getBoundingClientRect();
-    joy.cx = (r.left + r.right) / 2;
-    joy.cy = (r.top + r.bottom) / 2;
-    joyMove(e);
+  function touchStart(e) {
+    e.preventDefault();
+    if (state === STATE.START) { startGame(); return; }
+    if (state === STATE.GAMEOVER) { startGame(); return; }
+    if (touch.active) return;
+    const t = e.changedTouches[0];
+    touch.active = true;
+    touch.id = t.identifier;
+    touch.x = t.clientX;
+    touch.y = t.clientY;
+    touch.fade = 1;
   }
-  function joyMove(e) {
-    if (!joy.active) return;
-    let t;
-    if (e.changedTouches) {
-      for (const tt of e.changedTouches) if (tt.identifier === joy.id) { t = tt; break; }
-      if (!t) return;
-    } else { t = e; }
-    let dx = t.clientX - joy.cx;
-    let dy = t.clientY - joy.cy;
-    const d = Math.hypot(dx, dy);
-    if (d > JOY_MAX) { dx = (dx / d) * JOY_MAX; dy = (dy / d) * JOY_MAX; }
-    joy.dx = dx / JOY_MAX;
-    joy.dy = dy / JOY_MAX;
-    knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
-  }
-  function joyEnd(e) {
-    if (!joy.active) return;
-    if (e.changedTouches) {
-      let found = false;
-      for (const tt of e.changedTouches) if (tt.identifier === joy.id) { found = true; break; }
-      if (!found) return;
+  function touchMove(e) {
+    if (!touch.active) return;
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === touch.id) {
+        touch.x = t.clientX;
+        touch.y = t.clientY;
+        touch.fade = 1;
+        return;
+      }
     }
-    joy.active = false;
-    joy.id = null;
-    joy.dx = 0; joy.dy = 0;
-    knobEl.style.transform = 'translate(0px, 0px)';
   }
+  function touchEnd(e) {
+    if (!touch.active) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier === touch.id) {
+        touch.active = false;
+        touch.id = null;
+        return;
+      }
+    }
+  }
+  canvas.addEventListener('touchstart',  touchStart, { passive: false });
+  canvas.addEventListener('touchmove',   touchMove,  { passive: false });
+  canvas.addEventListener('touchend',    touchEnd,   { passive: false });
+  canvas.addEventListener('touchcancel', touchEnd,   { passive: false });
 
-  joystickEl.addEventListener('touchstart', (e) => { e.preventDefault(); joyStart(e); }, { passive: false });
-  joystickEl.addEventListener('touchmove',  (e) => { e.preventDefault(); joyMove(e);  }, { passive: false });
-  joystickEl.addEventListener('touchend',   (e) => { e.preventDefault(); joyEnd(e);   }, { passive: false });
-  joystickEl.addEventListener('touchcancel',(e) => { e.preventDefault(); joyEnd(e);   }, { passive: false });
-
-  // Tap/click to start or restart (skip when interacting with skin picker)
+  // Tap/click on overlays to start/restart (skip when interacting with skin picker)
   function tapHandler(e) {
     if (e.target && e.target.closest('.skin-swatch')) return;
     e.preventDefault();
@@ -286,10 +280,6 @@
   startEl.addEventListener('mousedown', tapHandler);
   gameoverEl.addEventListener('touchstart', tapHandler, { passive: false });
   gameoverEl.addEventListener('mousedown', tapHandler);
-  // Instant restart even before the overlay fades in
-  canvas.addEventListener('touchstart', (e) => {
-    if (state === STATE.GAMEOVER) { e.preventDefault(); startGame(); }
-  }, { passive: false });
   canvas.addEventListener('mousedown', () => {
     if (state === STATE.GAMEOVER) startGame();
   });
@@ -371,7 +361,12 @@
     if (keys['s'] || keys['arrowdown'])  my += 1;
     if (keys['a'] || keys['arrowleft'])  mx -= 1;
     if (keys['d'] || keys['arrowright']) mx += 1;
-    if (joy.active) { mx += joy.dx; my += joy.dy; }
+    if (touch.active) {
+      const dx = touch.x - player.x;
+      const dy = touch.y - player.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 3) { mx += dx / d; my += dy / d; }
+    }
     const m = Math.hypot(mx, my);
     if (m > 1) { mx /= m; my /= m; }
 
@@ -686,6 +681,23 @@
     ctx.fillRect(0, 0, W, H);
   }
 
+  function drawTouchIndicator() {
+    if (touch.fade <= 0) return;
+    const a = touch.fade;
+    // Outer ring pulses slightly while held
+    const pulse = touch.active ? (1 + Math.sin(elapsed * 10) * 0.08) : 1;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 * a})`;
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 22 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    // Inner dot
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.75 * a})`;
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   function render() {
     const sx = (Math.random() - 0.5) * shake;
     const sy = (Math.random() - 0.5) * shake;
@@ -701,6 +713,7 @@
     drawPowerups();
     drawEnemies();
     drawPlayer();
+    drawTouchIndicator();
 
     // Particles
     for (const p of particles) {
@@ -730,6 +743,10 @@
 
     if (state === STATE.PLAYING) update(dt);
     else if (state === STATE.GAMEOVER) updateGameover(dt);
+
+    // Touch indicator fade (independent of game state so it eases out on death)
+    if (touch.active) touch.fade = Math.min(1, touch.fade + dt * 10);
+    else if (touch.fade > 0) touch.fade = Math.max(0, touch.fade - dt * 4);
 
     render();
     requestAnimationFrame(loop);
