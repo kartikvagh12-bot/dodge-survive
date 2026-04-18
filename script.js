@@ -226,9 +226,11 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // ── Input: touch-to-move (mobile) ───────────────────────────────────────
-  // Tap or hold anywhere on the canvas — player moves toward that point.
-  const touch = { active: false, id: null, x: 0, y: 0, fade: 0 };
+  // ── Input: drag-to-move (mobile) ────────────────────────────────────────
+  // Touch anywhere, then drag — the delta from the start point is the
+  // direction + magnitude. Player never hides under the finger.
+  const touch = { active: false, id: null, startX: 0, startY: 0, x: 0, y: 0, fade: 0 };
+  const TOUCH_MAX = 60; // pixels of drag for full speed
 
   function touchStart(e) {
     e.preventDefault();
@@ -238,6 +240,8 @@
     const t = e.changedTouches[0];
     touch.active = true;
     touch.id = t.identifier;
+    touch.startX = t.clientX;
+    touch.startY = t.clientY;
     touch.x = t.clientX;
     touch.y = t.clientY;
     touch.fade = 1;
@@ -362,10 +366,14 @@
     if (keys['a'] || keys['arrowleft'])  mx -= 1;
     if (keys['d'] || keys['arrowright']) mx += 1;
     if (touch.active) {
-      const dx = touch.x - player.x;
-      const dy = touch.y - player.y;
+      const dx = touch.x - touch.startX;
+      const dy = touch.y - touch.startY;
       const d = Math.hypot(dx, dy);
-      if (d > 3) { mx += dx / d; my += dy / d; }
+      if (d > 5) { // small deadzone to avoid jitter on stationary finger
+        const mag = Math.min(d, TOUCH_MAX) / TOUCH_MAX;
+        mx += (dx / d) * mag;
+        my += (dy / d) * mag;
+      }
     }
     const m = Math.hypot(mx, my);
     if (m > 1) { mx /= m; my /= m; }
@@ -684,17 +692,29 @@
   function drawTouchIndicator() {
     if (touch.fade <= 0) return;
     const a = touch.fade;
-    // Outer ring pulses slightly while held
-    const pulse = touch.active ? (1 + Math.sin(elapsed * 10) * 0.08) : 1;
+    const sx = touch.startX, sy = touch.startY;
+
+    // Soft base ring at the initial touch position
     ctx.lineWidth = 2;
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 * a})`;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * a})`;
     ctx.beginPath();
-    ctx.arc(touch.x, touch.y, 22 * pulse, 0, Math.PI * 2);
+    ctx.arc(sx, sy, TOUCH_MAX, 0, Math.PI * 2);
     ctx.stroke();
-    // Inner dot
-    ctx.fillStyle = `rgba(255, 255, 255, ${0.75 * a})`;
+
+    // Base center dot
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`;
     ctx.beginPath();
-    ctx.arc(touch.x, touch.y, 4, 0, Math.PI * 2);
+    ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Knob — clamped to within the base ring
+    let dx = touch.x - sx;
+    let dy = touch.y - sy;
+    const d = Math.hypot(dx, dy);
+    if (d > TOUCH_MAX) { dx = (dx / d) * TOUCH_MAX; dy = (dy / d) * TOUCH_MAX; }
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.55 * a})`;
+    ctx.beginPath();
+    ctx.arc(sx + dx, sy + dy, 12, 0, Math.PI * 2);
     ctx.fill();
   }
 
