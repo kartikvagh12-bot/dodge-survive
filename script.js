@@ -226,11 +226,12 @@
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // ── Input: drag-to-move (mobile) ────────────────────────────────────────
-  // Touch anywhere, then drag — the delta from the start point is the
-  // direction + magnitude. Player never hides under the finger.
-  const touch = { active: false, id: null, startX: 0, startY: 0, x: 0, y: 0, fade: 0 };
-  const TOUCH_MAX = 60; // pixels of drag for full speed
+  // ── Input: delta-drag movement (mobile) ─────────────────────────────────
+  // Player position is translated by (currentTouch - previousTouch) * sens
+  // inside each touchmove event. No target, no direction vector — finger
+  // movement is applied as a direct position delta, like dragging an object.
+  const touch = { active: false, id: null, prevX: 0, prevY: 0, x: 0, y: 0, fade: 0 };
+  const TOUCH_SENS = 1.4;
 
   function touchStart(e) {
     e.preventDefault();
@@ -240,8 +241,8 @@
     const t = e.changedTouches[0];
     touch.active = true;
     touch.id = t.identifier;
-    touch.startX = t.clientX;
-    touch.startY = t.clientY;
+    touch.prevX = t.clientX;
+    touch.prevY = t.clientY;
     touch.x = t.clientX;
     touch.y = t.clientY;
     touch.fade = 1;
@@ -250,12 +251,23 @@
     if (!touch.active) return;
     e.preventDefault();
     for (const t of e.changedTouches) {
-      if (t.identifier === touch.id) {
-        touch.x = t.clientX;
-        touch.y = t.clientY;
-        touch.fade = 1;
-        return;
-      }
+      if (t.identifier !== touch.id) continue;
+      const dx = t.clientX - touch.prevX;
+      const dy = t.clientY - touch.prevY;
+      touch.prevX = t.clientX;
+      touch.prevY = t.clientY;
+      touch.x = t.clientX;
+      touch.y = t.clientY;
+      touch.fade = 1;
+      if (state !== STATE.PLAYING || !player) return;
+      const sens = TOUCH_SENS * (activeFx.SPEED > 0 ? PWR.SPEED.speedMult : 1);
+      player.x += dx * sens;
+      player.y += dy * sens;
+      if (player.x < player.r) player.x = player.r;
+      if (player.y < player.r) player.y = player.r;
+      if (player.x > W - player.r) player.x = W - player.r;
+      if (player.y > H - player.r) player.y = H - player.r;
+      return;
     }
   }
   function touchEnd(e) {
@@ -359,22 +371,13 @@
       showLevelToast(level);
     }
 
-    // Player movement
+    // Keyboard-driven velocity. Touch moves the player directly in the
+    // touchmove handler as a pure position delta.
     let mx = 0, my = 0;
     if (keys['w'] || keys['arrowup'])    my -= 1;
     if (keys['s'] || keys['arrowdown'])  my += 1;
     if (keys['a'] || keys['arrowleft'])  mx -= 1;
     if (keys['d'] || keys['arrowright']) mx += 1;
-    if (touch.active) {
-      const dx = touch.x - touch.startX;
-      const dy = touch.y - touch.startY;
-      const d = Math.hypot(dx, dy);
-      if (d > 5) { // small deadzone to avoid jitter on stationary finger
-        const mag = Math.min(d, TOUCH_MAX) / TOUCH_MAX;
-        mx += (dx / d) * mag;
-        my += (dy / d) * mag;
-      }
-    }
     const m = Math.hypot(mx, my);
     if (m > 1) { mx /= m; my /= m; }
 
@@ -692,30 +695,16 @@
   function drawTouchIndicator() {
     if (touch.fade <= 0) return;
     const a = touch.fade;
-    const sx = touch.startX, sy = touch.startY;
-
-    // Soft base ring at the initial touch position
-    ctx.lineWidth = 2;
+    // Small subtle dot where the finger currently is
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.35 * a})`;
+    ctx.beginPath();
+    ctx.arc(touch.x, touch.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1.5;
     ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * a})`;
     ctx.beginPath();
-    ctx.arc(sx, sy, TOUCH_MAX, 0, Math.PI * 2);
+    ctx.arc(touch.x, touch.y, 16, 0, Math.PI * 2);
     ctx.stroke();
-
-    // Base center dot
-    ctx.fillStyle = `rgba(255, 255, 255, ${0.25 * a})`;
-    ctx.beginPath();
-    ctx.arc(sx, sy, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Knob — clamped to within the base ring
-    let dx = touch.x - sx;
-    let dy = touch.y - sy;
-    const d = Math.hypot(dx, dy);
-    if (d > TOUCH_MAX) { dx = (dx / d) * TOUCH_MAX; dy = (dy / d) * TOUCH_MAX; }
-    ctx.fillStyle = `rgba(255, 255, 255, ${0.55 * a})`;
-    ctx.beginPath();
-    ctx.arc(sx + dx, sy + dy, 12, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   function render() {
