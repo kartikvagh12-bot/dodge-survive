@@ -74,6 +74,8 @@
   };
   const PWR_LIST = Object.values(PWR);
   const PWR_RADIUS = 16;
+  const ENEMY_COLOR = '#ff4060';
+  const ENEMY_GLOW = 'rgba(255, 64, 96, ';
 
   // ── Canvas sizing ───────────────────────────────────────────────────────
   let W = 0, H = 0, dpr = 1;
@@ -214,7 +216,7 @@
       unlockBannerEl.classList.add('hidden');
     }
 
-    setTimeout(() => gameoverEl.classList.remove('hidden'), 550);
+    setTimeout(() => gameoverEl.classList.remove('hidden'), 120);
   }
 
   // ── Input: keyboard ─────────────────────────────────────────────────────
@@ -222,7 +224,7 @@
   window.addEventListener('keydown', (e) => {
     keys[e.key.toLowerCase()] = true;
     if (state === STATE.START) { startGame(); return; }
-    if (state === STATE.GAMEOVER && elapsed > 0.6) startGame();
+    if (state === STATE.GAMEOVER) startGame();
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -278,12 +280,19 @@
     if (e.target && e.target.closest('.skin-swatch')) return;
     e.preventDefault();
     if (state === STATE.START) startGame();
-    else if (state === STATE.GAMEOVER && elapsed > 0.6) startGame();
+    else if (state === STATE.GAMEOVER) startGame();
   }
   startEl.addEventListener('touchstart', tapHandler, { passive: false });
   startEl.addEventListener('mousedown', tapHandler);
   gameoverEl.addEventListener('touchstart', tapHandler, { passive: false });
   gameoverEl.addEventListener('mousedown', tapHandler);
+  // Instant restart even before the overlay fades in
+  canvas.addEventListener('touchstart', (e) => {
+    if (state === STATE.GAMEOVER) { e.preventDefault(); startGame(); }
+  }, { passive: false });
+  canvas.addEventListener('mousedown', () => {
+    if (state === STATE.GAMEOVER) startGame();
+  });
 
   // Block page-level scroll/zoom gestures
   document.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
@@ -299,15 +308,13 @@
     else if (side === 1) { x = W + margin; y = Math.random() * H; }
     else if (side === 2) { x = Math.random() * W; y = H + margin; }
     else { x = -margin; y = Math.random() * H; }
-    // Speed scales with level (more dramatic per level)
-    const lvBoost = (level - 1) * 14;
-    const minSp = 80 + lvBoost;
-    const maxSp = 140 + lvBoost * 1.4;
+    // Smooth time-based speed scaling
+    const minSp = 80 + elapsed * 2.4;
+    const maxSp = 140 + elapsed * 3.4;
     const speed = minSp + Math.random() * (maxSp - minSp);
-    const r = 11 + Math.random() * 7;
+    const r = 11 + Math.random() * 6;
     enemies.push({
       x, y, r, speed,
-      hue: 350 + (Math.random() - 0.5) * 30,
       pulsePhase: Math.random() * Math.PI * 2,
     });
   }
@@ -370,8 +377,12 @@
 
     const speedMult = activeFx.SPEED > 0 ? PWR.SPEED.speedMult : 1;
     const playerSpeed = player.baseSpeed * speedMult;
-    player.vx = mx * playerSpeed;
-    player.vy = my * playerSpeed;
+    const targetVx = mx * playerSpeed;
+    const targetVy = my * playerSpeed;
+    // Frame-rate-independent smoothing — ~36ms time constant, snappy but no jitter
+    const k = 1 - Math.exp(-dt * 28);
+    player.vx += (targetVx - player.vx) * k;
+    player.vy += (targetVy - player.vy) * k;
     player.x += player.vx * dt;
     player.y += player.vy * dt;
     if (player.x < player.r) player.x = player.r;
@@ -394,12 +405,12 @@
     // Cap trail length for perf
     if (trail.length > 80) trail.splice(0, trail.length - 80);
 
-    // Enemy spawning — interval shrinks with level
+    // Smooth interval decay — fast at start, gentle asymptote near 0.18s
     spawnTimer -= dt;
-    const baseInterval = Math.max(0.18, 1.0 - (level - 1) * 0.07 - elapsed * 0.005);
+    const baseInterval = Math.max(0.18, 1.0 / (1 + elapsed * 0.045));
     if (spawnTimer <= 0) {
       spawnEnemy();
-      spawnTimer = baseInterval * (0.7 + Math.random() * 0.6);
+      spawnTimer = baseInterval * (0.75 + Math.random() * 0.5);
     }
 
     // Powerup spawning — every 7-13s, but skip if all 3 already active
@@ -480,7 +491,7 @@
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
         life: 0.6, max: 0.6,
         r: 2 + Math.random() * 2,
-        color: `hsl(${e.hue}, 90%, 60%)`,
+        color: ENEMY_COLOR,
       });
     }
   }
@@ -544,7 +555,7 @@
     const step = 60;
     const ox = (player ? -player.x * 0.04 : 0);
     const oy = (player ? -player.y * 0.04 : 0);
-    ctx.strokeStyle = 'rgba(94, 226, 255, 0.05)';
+    ctx.strokeStyle = 'rgba(94, 226, 255, 0.025)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let x = (ox % step); x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
@@ -599,23 +610,20 @@
 
   function drawEnemies() {
     for (const e of enemies) {
-      const pulse = 1 + Math.sin(e.pulsePhase) * 0.08;
-      ctx.beginPath();
-      const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 2.2);
-      grad.addColorStop(0, `hsla(${e.hue}, 90%, 60%, 0.85)`);
-      grad.addColorStop(1, `hsla(${e.hue}, 90%, 30%, 0)`);
+      const pulse = 1 + Math.sin(e.pulsePhase) * 0.06;
+      // Soft glow
+      const grad = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 2);
+      grad.addColorStop(0, ENEMY_GLOW + '0.55)');
+      grad.addColorStop(1, ENEMY_GLOW + '0)');
       ctx.fillStyle = grad;
-      ctx.arc(e.x, e.y, e.r * 2.2 * pulse, 0, Math.PI * 2);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.r * 2 * pulse, 0, Math.PI * 2);
       ctx.fill();
 
+      // Solid core
+      ctx.fillStyle = ENEMY_COLOR;
       ctx.beginPath();
-      ctx.fillStyle = `hsl(${e.hue}, 90%, 55%)`;
       ctx.arc(e.x, e.y, e.r * pulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.arc(e.x - e.r * 0.3, e.y - e.r * 0.3, e.r * 0.3, 0, Math.PI * 2);
       ctx.fill();
     }
   }

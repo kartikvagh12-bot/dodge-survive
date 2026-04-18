@@ -175,7 +175,6 @@ html, body {
   background: rgba(94, 226, 255, 0.55);
   border: 2px solid rgba(255,255,255,0.6);
   box-shadow: 0 0 20px rgba(94, 226, 255, 0.6);
-  transition: transform 0.05s linear;
   pointer-events: none;
 }
 
