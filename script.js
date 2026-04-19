@@ -1,4 +1,17 @@
 (() => {
+  // ── Analytics ────────────────────────────────────────────────────────────
+  let playerId = localStorage.getItem('playerId');
+  if (!playerId) {
+    playerId = Math.random().toString(36).substring(2, 10);
+    localStorage.setItem('playerId', playerId);
+  }
+  function trackEvent(name, params = {}) {
+    if (typeof gtag === 'function') {
+      gtag('event', name, params);
+    }
+  }
+  let sessionStart = 0;
+
   // ── DOM ──────────────────────────────────────────────────────────────────
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
@@ -170,6 +183,8 @@
     startEl.classList.add('hidden');
     gameoverEl.classList.add('hidden');
     unlockBannerEl.classList.add('hidden');
+    sessionStart = Date.now();
+    trackEvent('game_start', { playerId });
   }
 
   function endGame() {
@@ -206,6 +221,10 @@
 
     finalScoreEl.textContent = score;
     finalBestEl.textContent = best;
+
+    const duration = (Date.now() - sessionStart) / 1000;
+    trackEvent('game_over', { playerId, score, best });
+    trackEvent('session_end', { playerId, duration, score });
 
     if (unlockedNew) {
       unlockNameEl.textContent = unlockedNew.name.toUpperCase();

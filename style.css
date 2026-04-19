@@ -220,6 +220,14 @@ html, body {
   100% { opacity: 1; transform: scale(1); }
 }
 
+.go-share {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+  margin-bottom: 14px;
+  letter-spacing: 0.5px;
+}
+
 .go-hint {
   font-size: 14px;
   letter-spacing: 2px;
