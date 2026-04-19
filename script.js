@@ -29,6 +29,7 @@
   const gameoverEl = document.getElementById('gameover');
   const startEl = document.getElementById('start');
   const skinPickerEl = document.getElementById('skin-picker');
+  const copyChallengeBtn = document.getElementById('copy-challenge');
 
   const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
   startHintEl.textContent = isTouch ? 'Tap to start' : 'Press any key to start';
@@ -304,9 +305,10 @@
   canvas.addEventListener('touchend',    touchEnd,   { passive: false });
   canvas.addEventListener('touchcancel', touchEnd,   { passive: false });
 
-  // Tap/click on overlays to start/restart (skip when interacting with skin picker)
+  // Tap/click on overlays to start/restart (skip when interacting with skin picker or share button)
   function tapHandler(e) {
     if (e.target && e.target.closest('.skin-swatch')) return;
+    if (e.target && e.target.closest('#copy-challenge')) return;
     e.preventDefault();
     if (state === STATE.START) startGame();
     else if (state === STATE.GAMEOVER) startGame();
@@ -318,6 +320,50 @@
   canvas.addEventListener('mousedown', () => {
     if (state === STATE.GAMEOVER) startGame();
   });
+
+  // Copy Challenge button — share score text to clipboard
+  let copyResetTimer = null;
+  function copyChallenge(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const text = `I survived ${score} seconds 😄\n\nTry to beat me:\nhttps://kartikvagh12-bot.github.io/dodge-survive/`;
+    const done = () => {
+      copyChallengeBtn.textContent = 'Copied!';
+      copyChallengeBtn.classList.add('copied');
+      clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        copyChallengeBtn.textContent = 'Copy Challenge';
+        copyChallengeBtn.classList.remove('copied');
+      }, 2000);
+      trackEvent('copy_challenge', { playerId, score });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+        done();
+      });
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(ta);
+      done();
+    }
+  }
+  copyChallengeBtn.addEventListener('click', copyChallenge);
+  copyChallengeBtn.addEventListener('touchstart', copyChallenge, { passive: false });
 
   // Block page-level scroll/zoom gestures
   document.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });

@@ -224,8 +224,36 @@ html, body {
   font-size: 14px;
   font-weight: 600;
   color: rgba(255,255,255,0.75);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   letter-spacing: 0.5px;
+}
+
+#copy-challenge {
+  pointer-events: auto;
+  display: inline-block;
+  margin: 0 auto 16px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(94, 226, 255, 0.7);
+  background: rgba(94, 226, 255, 0.12);
+  color: #5ee2ff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.12s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  text-shadow: 0 0 8px rgba(94,226,255,0.5);
+}
+#copy-challenge:hover { transform: scale(1.04); background: rgba(94,226,255,0.2); }
+#copy-challenge:active { transform: scale(0.96); }
+#copy-challenge.copied {
+  border-color: rgba(94, 255, 122, 0.8);
+  background: rgba(94, 255, 122, 0.15);
+  color: #5eff7a;
+  text-shadow: 0 0 8px rgba(94,255,122,0.5);
 }
 
 .go-hint {
