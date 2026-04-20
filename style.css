@@ -325,3 +325,17 @@ html, body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+#credit {
+  position: fixed;
+  right: 10px;
+  bottom: calc(env(safe-area-inset-bottom, 0) + 8px);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.28);
+  pointer-events: none;
+  z-index: 4;
+  user-select: none;
+}
