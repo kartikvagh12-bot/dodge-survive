@@ -84,7 +84,7 @@ dodge-survive/
 
 ## Analytics
 
-- Provider: **Google Analytics (gtag)** — placeholder ID `G-XXXXXXXXXX` in `index.html`, replace with real GA4 measurement ID to activate
+- Provider: **Google Analytics (gtag)** — live measurement ID `G-W14F2MPXMC` in `index.html`
 - Persistent `playerId` stored in `localStorage` (random 8-char string)
 - Events tracked:
   - `game_start` — `{ playerId }`
@@ -134,3 +134,36 @@ Only consider AFTER analytics validation shows demand:
 - Live URL: `https://kartikvagh12-bot.github.io/dodge-survive/`
 - Deploy: just `git push` to `main` — GitHub Pages auto-rebuilds in ~30s
 - No `.nojekyll` needed (no underscore-prefixed assets)
+
+---
+
+## 🚀 Deployment Rules (CRITICAL)
+
+- Every code change **MUST** be committed to the repository
+- Every commit **MUST** be pushed to the `main` branch
+- GitHub Pages **must** reflect the latest changes
+
+### ✅ After every task, Claude MUST:
+
+1. **Apply** changes to actual project files (not just show them)
+2. **Commit** changes with a clear, descriptive message
+3. **Push** to `main` branch
+4. **Confirm** deployment is complete (Pages build success)
+
+### ❗ Important
+
+- Do **NOT** only suggest code changes
+- Do **NOT** return code without applying it
+- Do **NOT** skip the deployment step
+- Do **NOT** report a task as "done" until it is live on GitHub Pages
+
+### 🔍 Verification Requirement
+
+After deployment, Claude **must** confirm:
+
+- Changes are visible in the repository (commit present on `main`)
+- Changes are visible on the live GitHub Pages site (curl / HTTP 200 + content check)
+
+### Goal
+
+Ensure all changes are **fully applied and live** — not just suggested.
